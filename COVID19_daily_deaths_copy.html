@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html> 
+
+<!--The script below is for loading in d3-->
+<script src='https://d3js.org/d3.v5.min.js'></script>
+<head> <!--The head tag is for defining website metadata.  It gives the website tab a title-->
+    <title> Narrative Visualization COVID-19 Deaths </title>
+    <style>
+        body {
+            background-color: #BDC3C7;
+        }
+        .pagination a {
+            color: black;
+            float: left;
+            padding: 8px 16px;
+            text-decoration: none;
+            transition: background-color .3s;
+        }
+        
+        .pagination a.active {
+        background-color: dodgerblue;
+        color: white;
+        }
+
+        .pagination a.active2 {
+        background-color: rgb(153, 159, 165);
+        color: black;
+        }
+    </style>
+</head>
+
+<body onload="init()">
+
+    <h1 style="text-align: left;"> Daily COVID-19 Death Count by State </h1>
+    <div id="covid_chart"></div>
+    <script>
+        
+    
+        function get_state(data, place, search_rows) {
+            // Simple function for outputting data from a certain state and a limited number of rows
+            console.log(data.filter(function(d,i){ return (i < search_rows && d.state == place); }));
+        }
+
+        function get_state_data(data, state_abbr) {
+            // Function that aggregates the data from a specific state and puts it into an object/array
+            // This function also sorts the data so the path element draws the graphs correctly
+            var filtered_data = data.filter(function(d,i){ return d.state == state_abbr; });
+            //console.log('filtered_data', filtered_data);
+            full_data = filtered_data.map(function(d) { 
+                //console.log('d.new_death', d.new_death);
+                //console.log('d.state', d.state);
+                //console.log('d', d)
+                    return { 
+                        state: d.state,
+                        date: new Date(d.submission_date), 
+                        new_deaths: d.new_death
+                        
+                    }
+            })
+            return full_data.sort((a, b) => d3.ascending(a.date, b.date)); // Put the data in chronological order
+        }
+        const margin = {top: 50, right: 50, bottom: 50, left: 50},
+            width = 700 - margin.left - margin.right,
+            height = 500 - margin.top - margin.bottom;
+
+        console.log('!!!!!!', margin, width, height)
+        const svg = d3.select("#covid_chart")
+            .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+                .attr("transform", "translate("+margin.left+", "+margin.top+")");
+
+        const x = d3.scaleTime().range([0, width]);
+        const xAxis = d3.axisBottom().scale(x)
+        
+        svg.append("g")
+            .attr("transform", "translate("+0+", "+height+")")
+            .attr("class", "x_axis");
+
+        const y = d3.scaleLinear().range([height, 0]);
+        const yAxis = d3.axisLeft().scale(y)
+        svg.append("g")
+            .attr("class", "y_axis");
+
+        async function init() { 
+            //const data = await d3.csv("United_States_COVID-19_Cases_and_Deaths_by_State_over_Time.csv");
+            const data = await d3.csv("full_data.csv");
+            console.log('get_state_data_us', get_state_data(data, 'US'))
+            //console.log(data.filter(function(d){ return d.state == 'US'; }));
+            /* 
+            This function lets javascript know to wait to execute the code below before the
+            data has loaded, hence, the await keyword 
+            */
+        
+            //console.log(data.filter(function(d,i){ return (i < 10); }));
+
+            // Converting the `submission_date` column to be a Date object
+            //var dates = data.map(function(d) { return new Date(d.submission_date); });
+            var e = document.getElementById("dropdown"); //Stores the dropdown <select> element
+            console.log('e', e);
+
+            function show() {
+                /* 
+                This function tells javascript how to respond to an event: when someone changes
+                the dropdown field
+                */
+                var inp = e.value; //stores the current value of the dropdown
+                console.log('inp', inp);
+                full_data = get_state_data(data, inp);
+                console.log('full_data', full_data);
+
+                
+                //d3.select("svg").selectAll("path").remove(); //Clears all svg elements from the canvas
+                
+                x.domain(d3.extent(data, function(d) { return new Date(d.submission_date); }));
+                svg.selectAll(".x_axis")
+                .transition()
+                    .duration(3000)
+                    .call(xAxis);
+                console.log('-----------------------------------------');
+
+                var max_deaths = d3.max(full_data, function(d) { return +d.new_deaths; }); //console.log('d.new_case', d); 
+                var min_deaths = d3.min(full_data, function(d) { return +d.new_deaths; });
+
+                y.domain([min_deaths,max_deaths]);
+                svg.selectAll(".y_axis")
+                .transition()
+                    .duration(3000)
+                    .call(yAxis);
+
+                
+
+
+                // Set the gradient (code taken and adapted from: https://www.d3-graph-gallery.com/graph/line_color_gradient_svg.html)
+                
+                
+                d3.select("svg").append("linearGradient")
+                .attr("id", "line-gradient")
+                .attr("gradientUnits", "userSpaceOnUse")
+                .attr("x1", 0)
+                .attr("y1", y(0))
+                .attr("x2", 0)
+                .attr("y2", y(max_deaths))
+                .selectAll("stop")
+                    .data([
+                    {offset: "0%", color: "blue"},
+                    {offset: "100%", color: "red"}
+                    ])
+                .enter().append("stop")
+                    .attr("offset", function(d) { return d.offset; })
+                    .attr("stop-color", function(d) { return d.color; })
+                
+                
+                const draw = svg.selectAll(".chart_line")
+                    .data([full_data], function(d) { return d.date });
+                
+                draw
+                    .join("path")
+                        .attr("class", "chart_line")
+                        .transition()
+                        .duration(3000)
+                        .attr('d', d3.line()
+                            .x(function(d) { return x(d.date); })
+                            .y(function(d) { return y(d.new_deaths); }))
+                        .attr('stroke', 'url(#line-gradient') //.attr('stroke', 'navy') //
+                        .attr('fill', 'none')
+                        .attr('stroke-width', '0.25%');
+            
+            }
+            
+            e.onchange = show;
+            show();
+            console.log("DONE"); 
+            console.log(data.filter(function(d,i){ return (d.state == 'US'); }));
+            console.log("US", get_state_data(data, "US"));
+
+           
+            /* 
+            To do: 
+            - Make your other charts dynamically change/load
+            - Consider making a choropleth
+            - Consider using a bar chart to show some of the data
+            - Add extra jurisdiction/state abbreviations (e.g. NYC) to the dropdown
+            
+            */
+           /*
+            Code sources:
+            - https://www.d3-graph-gallery.com/graph/line_change_data.html
+            - https://d3-annotation.susielu.com/
+            Data source:
+            - https://data.cdc.gov/Case-Surveillance/United-States-COVID-19-Cases-and-Deaths-by-State-o/9mfq-cb36
+            
+           */
+
+        }
+     
+    </script>
+
+<form> <!--The <form> element is a contain for different types of input elements-->
+    <select id ="dropdown"> <!--The select element is used to create a drop-down list-->
+        <!--Code taken and adapted from https://www.freeformatter.com/usa-state-list-html-select.html-->
+        <option value="AL">Alabama</option>
+        <option value="AK">Alaska</option>
+        <option value="AZ">Arizona</option>
+        <option value="AR">Arkansas</option>
+        <option value="CA">California</option>
+        <option value="CO">Colorado</option>
+        <option value="CT">Connecticut</option>
+        <option value="DE">Delaware</option>
+        <option value="DC">District Of Columbia</option>
+        <option value="FL">Florida</option>
+        <option value="GA">Georgia</option>
+        <option value="HI">Hawaii</option>
+        <option value="ID">Idaho</option>
+        <option value="IL">Illinois</option>
+        <option value="IN">Indiana</option>
+        <option value="IA">Iowa</option>
+        <option value="KS">Kansas</option>
+        <option value="KY">Kentucky</option>
+        <option value="LA">Louisiana</option>
+        <option value="ME">Maine</option>
+        <option value="MD">Maryland</option>
+        <option value="MA">Massachusetts</option>
+        <option value="MI">Michigan</option>
+        <option value="MN">Minnesota</option>
+        <option value="MS">Mississippi</option>
+        <option value="MO">Missouri</option>
+        <option value="MT">Montana</option>
+        <option value="NE">Nebraska</option>
+        <option value="NV">Nevada</option>
+        <option value="NH">New Hampshire</option>
+        <option value="NJ">New Jersey</option>
+        <option value="NM">New Mexico</option>
+        <option value="NY">New York</option>
+        <option value="NC">North Carolina</option>
+        <option value="ND">North Dakota</option>
+        <option value="OH">Ohio</option>
+        <option value="OK">Oklahoma</option>
+        <option value="OR">Oregon</option>
+        <option value="PA">Pennsylvania</option>
+        <option value="RI">Rhode Island</option>
+        <option value="SC">South Carolina</option>
+        <option value="SD">South Dakota</option>
+        <option value="TN">Tennessee</option>
+        <option value="TX">Texas</option>
+        <option value="UT">Utah</option>
+        <option value="VT">Vermont</option>
+        <option value="VA">Virginia</option>
+        <option value="WA">Washington</option>
+        <option value="WV">West Virginia</option>
+        <option value="WI">Wisconsin</option>
+        <option value="WY">Wyoming</option>
+        <option value="AS">American Samoa</option>
+        <option value="GU">Guam</option>
+        <option value="MP">Northern Mariana Islands</option>
+        <option value="PR">Puerto Rico</option>
+        <option value="US">United States</option>
+        <option value="UM">United States Minor Outlying Islands</option>
+        <option value="VI">Virgin Islands</option>
+    </select>
+</form>
+<div class="pagination">
+    <a class = "active2" href="COVID19_daily_deaths_US_wave4.html"> Back to presentation </a>
+</div>
+</body>
+
+</html>
